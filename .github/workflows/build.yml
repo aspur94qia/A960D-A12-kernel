@@ -34,6 +34,7 @@ jobs:
           mkdir -p arch/arm/include/asm
           echo "#ifndef __ASM_KERNEL_PGTABLE_H\n#define __ASM_KERNEL_PGTABLE_H\n#endif" > arch/arm/include/asm/kernel-pgtable.h
           sed -i 's/static bool __init_or_module initcall_sec_debug/static bool initcall_sec_debug/' init/main.c
+          # STUB BOTH files - ini yang paling ampuh
           cat > include/linux/sec_debug.h << 'EOF'
           #ifndef SEC_DEBUG_H
           #define SEC_DEBUG_H
@@ -41,22 +42,36 @@ jobs:
           #define DSS_FLAG_OUT 1
           #define DTYPE_CPUHP 0
           #define DTYPE_TASK 0
+          #define DTYPE_WORK 0
+          #define DTYPE_SOFTIRQ 0
+          #define DTYPE_IRQ 0
           struct sec_debug_auto_comment { int dummy; };
           struct sec_debug_auto_comment_info { int dummy; };
-          static inline void dbg_snapshot_suspend(const char *a, void *b, void *c, int d, int e) {}
-          static inline void dbg_snapshot_resume(void) {}
-          static inline void sec_debug_init(void) {}
-          static inline void sec_debug_auto_comment_init(void) {}
           static inline void sec_debug_wtsk_set_data(int a, void *b) {}
           static inline void sec_debug_wtsk_clear_data(void) {}
           static inline void sec_debug_task_set_cpu(int a, int b) {}
+          static inline void sec_debug_init(void) {}
+          static inline void sec_debug_auto_comment_init(void) {}
           #define sec_debug_auto_comment(a,b) do{}while(0)
           #define SEC_DEBUG_AUTO_COMMENT_MAGIC 0
+          #define sched_cpu_rq_online(a) do{}while(0)
           #endif
           EOF
-          # stub debug-snapshot.h also if needed
-          sed -i 's/static inline void sched_cpu_rq_online/#define sched_cpu_rq_online(a) do{}while(0)\nstatic inline void __dummy_sched_cpu_rq_online/' include/linux/sched.h 2>/dev/null || true
-          echo "#define sched_cpu_rq_online(a) do{}while(0)" >> include/linux/sec_debug.h
+          cat > include/linux/debug-snapshot.h << 'EOF'
+          #ifndef DEBUG_SNAPSHOT_H
+          #define DSS_FLAG_IN 0
+          #define DSS_FLAG_OUT 1
+          #define DSS_FLAG_TEMP 0
+          static inline void dbg_snapshot_suspend(const char *a, void *b, void *c, int d, int e) {}
+          static inline void dbg_snapshot_resume(void) {}
+          static inline void dbg_snapshot_task(int a, void *b) {}
+          static inline void dbg_snapshot_spinlock(void *a, int b) {}
+          static inline void dbg_snapshot_mutex(void *a, int b) {}
+          static inline void dbg_snapshot_sema(void *a, int b) {}
+          #define dbg_snapshot_add_bl_item_info(a,b,c) 0
+          #define dbg_snapshot_print_log(a) do{}while(0)
+          #endif
+          EOF
       - name: Build
         run: |
           export ARCH=arm
