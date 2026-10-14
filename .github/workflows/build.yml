@@ -42,8 +42,17 @@ jobs:
           WRAP
           chmod +x kernel/toolchain/clang/host/linux-x86/clang-4639204-cfp-jopp/bin/clang
           cd kernel
-          sed -i '1i #define DEV_SOCDATA_MAGIC 0x534F4344\nstruct dev_socdata { int magic; const char *soc; const char *ip; };' include/linux/device.h
-          sed -i '1i #define dbg_snapshot_spinlock(l,c) do{}while(0)' include/linux/spinlock_api_smp.h
+          # FIX 1: device.h - hapus definisi lama yang di bawah, inject di atas sekali saja
+          # hapus semua baris #define DEV_SOCDATA_MAGIC dan struct dev_socdata { ... };
+          sed -i '/#define DEV_SOCDATA_MAGIC/d' include/linux/device.h
+          # hapus blok struct dev_socdata { ... } yang lama (sampai };)
+          awk 'BEGIN{p=1} /struct dev_socdata \{/{p=0} p; /\};/ && p==0 {p=1; next}' include/linux/device.h > /tmp/fixed.h && mv /tmp/fixed.h include/linux/device.h
+          # sekarang inject yang benar di baris 1, sebelum apapun
+          sed -i '1i #ifndef DEV_SOCDATA_MAGIC\n#define DEV_SOCDATA_MAGIC 0xCAFEDEAD\nstruct dev_socdata { int magic; const char *soc; const char *ip; };\n#endif' include/linux/device.h
+          # FIX 2: spinlock - jangan define sebagai do{}while, tapi sebagai static inline kosong
+          sed -i '1i static inline void dbg_snapshot_spinlock(void *l, int c) {}\n#define DBG_SNAPSHOT_SPINLOCK_FIXED' include/linux/spinlock_api_smp.h
+          # pastikan nmi.h tidak rusak (reset kalau ada void void)
+          sed -i 's/static inline void void/static inline void/g' include/linux/nmi.h || true
       - name: Build
         run: |
           export ARCH=arm
@@ -52,16 +61,14 @@ jobs:
           export HOSTCC="gcc -fcommon"
           cd kernel
           DEF=$(ls arch/arm/configs/ | tail -n 1)
-          echo "Using $DEF"
           make $DEF
           sed -i 's/CONFIG_DEBUG_SNAPSHOT=.*/# CONFIG_DEBUG_SNAPSHOT is not set/' .config
-          echo "# CONFIG_DEBUG_SNAPSHOT is not set" >>.config
-          echo "CONFIG_ANDROID_BINDERFS=y" >>.config
-          echo "CONFIG_SECCOMP=y" >>.config
+          echo "# CONFIG_DEBUG_SNAPSHOT is not set" >> .config
+          echo "CONFIG_ANDROID_BINDERFS=y" >> .config
+          echo "CONFIG_SECCOMP=y" >> .config
           make olddefconfig
           make -j1 scripts_basic
-          printf '#!/bin/sh\nmkdir -p "$(dirname "$1")"; touch "$1"; exit 0\n' > scripts/basic/fixdep
-          chmod +x scripts/basic/fixdep
+          printf '#!/bin/sh\nmkdir -p "$(dirname "$1")"; touch "$1"; exit 0\n' > scripts/basic/fixdep; chmod +x scripts/basic/fixdep
           make -j1 scripts
           make -j1 prepare KCFLAGS="-Wno-error"
           make -j$(nproc) zImage KCFLAGS="-Wno-error" || make -j1 zImage KCFLAGS="-Wno-error"
