@@ -9,14 +9,16 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Install
-        run: |
-          sudo apt update -y
-          sudo apt install -y bc bison flex gcc-arm-linux-gnueabihf libssl-dev
+        run: sudo apt update -y && sudo apt install -y bc bison flex gcc-arm-linux-gnueabihf libssl-dev
+      - name: Find defconfig
+        run: ls arch/arm/configs/ | grep -i 7731
       - name: Build
         run: |
           export ARCH=arm
           export CROSS_COMPILE=arm-linux-gnueabihf-
-          make sp7731e_1h10_defconfig || make sprd_defconfig || make sp7731e_defconfig
+          DEF=$(ls arch/arm/configs/ | grep -i 7731 | head -n 1)
+          echo "Pakai $DEF"
+          make $DEF
           printf "\nCONFIG_ANDROID_BINDERFS=y\nCONFIG_SECCOMP=y\nCONFIG_SECCOMP_FILTER=y\n" >> .config
           make olddefconfig
           make -j$(nproc) zImage
