@@ -1,29 +1,38 @@
 name: Build A960D Fast
-on:
-  workflow_dispatch:
+on: workflow_dispatch:
 jobs:
   build:
     runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@v4
-      - name: Install
+      - name: Clone real kernel source
+        run: |
+          rm -rf kernel
+          git clone https://github.com/nasreirma/spreadtrum-sc7731-android-5.1-mocordroid-source.git --depth=1 kernel
+          ls kernel/
+          ls kernel/kernel/ || ls kernel/arch/ || find kernel -type d -name configs | head
+      - name: Install deps
         run: sudo apt update -y && sudo apt install -y bc bison flex gcc-arm-linux-gnueabihf
-      - name: List
-        run: ls arch/arm/configs/
       - name: Build
         run: |
+          # cari dimana arch nya
+          KDIR=$(find . -type d -name "arm" | grep configs -A2 -B2 | head || find . -name "*defconfig" | head -n 1 | xargs dirname | xargs dirname)
+          # coba 2 lokasi umum
+          if [ -d "kernel/kernel/arch/arm/configs" ]; then CDIR="kernel/kernel"; else CDIR="kernel"; fi
+          ls $CDIR/arch/arm/configs/ | head -n 20
           export ARCH=arm
           export CROSS_COMPILE=arm-linux-gnueabihf-
-          # defconfig di repo ini namanya sp7731e_1h10 atau mocor
-          DEF=$(ls arch/arm/configs/ | grep -E "sp7731|tshark" | head -n 1)
-          echo "Build $DEF"
+          cd $CDIR
+          DEF=$(ls arch/arm/configs/ | grep -i "sp7731\|tshark\|sc7731" | head -n 1)
+          echo "Pakai $DEF"
           make $DEF
           echo "CONFIG_ANDROID_BINDERFS=y" >> .config
           echo "CONFIG_SECCOMP=y" >> .config
           echo "CONFIG_SECCOMP_FILTER=y" >> .config
           make olddefconfig
           make -j$(nproc) zImage
+          ls -lh arch/arm/boot/
       - uses: actions/upload-artifact@v4
         with:
           name: zImage-A960D-A12
-          path: arch/arm/boot/zImage
+          path: "**/zImage"
