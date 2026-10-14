@@ -18,37 +18,21 @@ jobs:
           rm -rf kernel
           git clone https://github.com/Linux4/samsung_kernel.git --depth=1 kernel
           mkdir -p kernel/toolchain/clang/host/linux-x86/clang-4639204-cfp-jopp/bin
-          cat > kernel/toolchain/clang/host/linux-x86/clang-4639204-cfp-jopp/bin/clang << 'WRAP'
-          #!/bin/bash
-          REAL=/usr/bin/arm-linux-gnueabihf-gcc
-          ARGS=()
-          SKIP=0
-          for a in "$@"; do
-            if [ $SKIP -eq 1 ]; then SKIP=0; continue; fi
-            case "$a" in
-              -march=armv8-a+lse|-march=armv8-a) continue;;
-              -Xassembler) SKIP=1; continue;;
-              -no-integrated-as) continue;;
-              --param=allow-store-data-races=0) continue;;
-            esac
-            if echo "$a" | grep -q "\.d$"; then
-              p=$(echo "$a" | rev | cut -d, -f1 | rev)
-              mkdir -p "$(dirname "$p")" 2>/dev/null
-              touch "$p" 2>/dev/null
-            fi
-            ARGS+=("$a")
-          done
-          exec $REAL "${ARGS[@]}"
-          WRAP
+          printf '#!/bin/bash\nREAL=/usr/bin/arm-linux-gnueabihf-gcc\nARGS=()\nSKIP=0\nfor a in "$@"; do if [ $SKIP -eq 1 ]; then SKIP=0; continue; fi; case "$a" in -march=armv8-a+lse|-march=armv8-a) continue;; -Xassembler) SKIP=1; continue;; -no-integrated-as) continue;; --param=allow-store-data-races=0) continue;; esac; if echo "$a" | grep -q "\\.d$"; then p=$(echo "$a" | rev | cut -d, -f1 | rev); mkdir -p "$(dirname "$p")" 2>/dev/null; touch "$p" 2>/dev/null; fi; ARGS+=("$a"); done; exec $REAL "${ARGS[@]}"\n' > kernel/toolchain/clang/host/linux-x86/clang-4639204-cfp-jopp/bin/clang
           chmod +x kernel/toolchain/clang/host/linux-x86/clang-4639204-cfp-jopp/bin/clang
           cd kernel
           sed -i '/#define DEV_SOCDATA_MAGIC/d' include/linux/device.h
           awk 'BEGIN{p=1} /struct dev_socdata \{/{p=0} p; /\};/ && p==0 {p=1; next}' include/linux/device.h > /tmp/fixed.h && mv /tmp/fixed.h include/linux/device.h
           sed -i '1i #ifndef DEV_SOCDATA_MAGIC\n#define DEV_SOCDATA_MAGIC 0xCAFEDEAD\nstruct dev_socdata { int magic; const char *soc; const char *ip; };\n#endif' include/linux/device.h
           sed -i '1i static inline void dbg_snapshot_spinlock(void *l, int c) {}\n#define DBG_SNAPSHOT_SPINLOCK_FIXED' include/linux/spinlock_api_smp.h
-          # FIX nmi.h pakai perl biar pasti kena
-          perl -i -pe 's/sl_softirq_entry\(const char \*, void \*\)/sl_softirq_entry(const char *a, void *b)/g' include/linux/nmi.h
-          perl -i -pe 's/sl_hardirq_entry\(const char \*, void \*\)/sl_hardirq_entry(const char *a, void *b)/g' include/linux/nmi.h || true
+          # FIX nmi.h - hapus semua baris yang mengandung sl_ entry lalu inject yang benar
+          sed -i '/sl_softirq_entry/d' include/linux/nmi.h
+          sed -i '/sl_hardirq_entry/d' include/linux/nmi.h
+          sed -i '/sl_softirq_exit/d' include/linux/nmi.h
+          # inject di akhir file sebelum #endif kalau ada, kalau tidak di baris 125
+          echo "static inline void sl_softirq_entry(const char *a, void *b) { }" >> include/linux/nmi.h
+          echo "static inline void sl_hardirq_entry(const char *a, void *b) { }" >> include/linux/nmi.h
+          echo "static inline void sl_softirq_exit(void) { }" >> include/linux/nmi.h
           mkdir -p arch/arm/include/asm
           echo "#ifndef __ASM_KERNEL_PGTABLE_H\n#define __ASM_KERNEL_PGTABLE_H\n#endif" > arch/arm/include/asm/kernel-pgtable.h
       - name: Build
