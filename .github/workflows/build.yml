@@ -13,26 +13,40 @@ jobs:
           apt install -y git bc bison flex gcc-arm-linux-gnueabihf libssl-dev make
           git config --global --add safe.directory $GITHUB_WORKSPACE
       - uses: actions/checkout@v4
-      - name: Clone + fix clang wrapper
+      - name: Clone + clang wrapper filter
         run: |
           rm -rf kernel
           git clone https://github.com/Linux4/samsung_kernel.git --depth=1 kernel
-          # bikin clang wrapper yang beneran manggil gcc + handle .d files
           mkdir -p kernel/toolchain/clang/host/linux-x86/clang-4639204-cfp-jopp/bin
-          REALGCC=$(which arm-linux-gnueabihf-gcc)
-          cat > kernel/toolchain/clang/host/linux-x86/clang-4639204-cfp-jopp/bin/clang << WRAP
+          cat > kernel/toolchain/clang/host/linux-x86/clang-4639204-cfp-jopp/bin/clang << 'WRAP'
           #!/bin/bash
-          # wrapper clang -> arm gcc
-          for arg in "\$@"; do
-            case "\$arg" in
-              *","*.d) p=\$(echo "\$arg" | rev | cut -d, -f1 | rev); mkdir -p \$(dirname "\$p") 2>/dev/null; touch "\$p" 2>/dev/null;;
-              *.d) mkdir -p \$(dirname "\$arg") 2>/dev/null; touch "\$arg" 2>/dev/null;;
+          REAL=/usr/bin/arm-linux-gnueabihf-gcc
+          ARGS=()
+          SKIP_NEXT=0
+          for a in "$@"; do
+            if [ $SKIP_NEXT -eq 1 ]; then SKIP_NEXT=0; continue; fi
+            case "$a" in
+              -march=armv8-a+lse) continue;;
+              -march=armv8-a) continue;;
+              -Xassembler) SKIP_NEXT=1; continue;;
+              -no-integrated-as) continue;;
+              -Werror=implicit-int) continue;;
+              -Werror=strict-prototypes) continue;;
+              -Werror=date-time) continue;;
+              -Werror=incompatible-pointer-types) continue;;
+              -Werror=designated-init) continue;;
+              --param=allow-store-data-races=0) continue;;
             esac
+            # handle depfile creation
+            if echo "$a" | grep -q "\.d"; then
+              p=$(echo "$a" | rev | cut -d, -f1 | rev)
+              if echo "$p" | grep -q "\.d$"; then mkdir -p "$(dirname "$p")" 2>/dev/null; touch "$p" 2>/dev/null; fi
+            fi
+            ARGS+=("$a")
           done
-          exec $REALGCC "\$@"
+          exec $REAL "${ARGS[@]}"
           WRAP
           chmod +x kernel/toolchain/clang/host/linux-x86/clang-4639204-cfp-jopp/bin/clang
-          cat kernel/toolchain/clang/host/linux-x86/clang-4639204-cfp-jopp/bin/clang
       - name: Build
         run: |
           export ARCH=arm
@@ -41,7 +55,6 @@ jobs:
           export HOSTCC="gcc -fcommon"
           cd kernel
           DEF=$(ls arch/arm/configs/ | tail -n 1)
-          echo "DEF=$DEF"
           make $DEF
           echo "CONFIG_ANDROID_BINDERFS=y" >>.config
           echo "CONFIG_SECCOMP=y" >>.config
