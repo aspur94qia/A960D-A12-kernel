@@ -21,12 +21,11 @@ jobs:
           printf '#!/bin/bash\nREAL=/usr/bin/arm-linux-gnueabihf-gcc\nARGS=()\nSKIP=0\nfor a in "$@"; do if [ $SKIP -eq 1 ]; then SKIP=0; continue; fi; case "$a" in -march=armv8-a+lse|-march=armv8-a) continue;; -Xassembler) SKIP=1; continue;; -no-integrated-as) continue;; --param=allow-store-data-races=0) continue;; esac; if echo "$a" | grep -q "\\.d$"; then p=$(echo "$a" | rev | cut -d, -f1 | rev); mkdir -p "$(dirname "$p")" 2>/dev/null; touch "$p" 2>/dev/null; fi; ARGS+=("$a"); done; exec $REAL "${ARGS[@]}"\n' > kernel/toolchain/clang/host/linux-x86/clang-4639204-cfp-jopp/bin/clang
           chmod +x kernel/toolchain/clang/host/linux-x86/clang-4639204-cfp-jopp/bin/clang
           cd kernel
+          # fixes from XDA / Samsung
           sed -i '/#define DEV_SOCDATA_MAGIC/d' include/linux/device.h
           awk 'BEGIN{p=1} /struct dev_socdata \{/{p=0} p; /\};/ && p==0 {p=1; next}' include/linux/device.h > /tmp/fixed.h && mv /tmp/fixed.h include/linux/device.h
           sed -i '1i #ifndef DEV_SOCDATA_MAGIC\n#define DEV_SOCDATA_MAGIC 0xCAFEDEAD\nstruct dev_socdata { int magic; const char *soc; const char *ip; };\n#endif' include/linux/device.h
-          sed -i '/sl_softirq_entry/d' include/linux/nmi.h
-          sed -i '/sl_hardirq_entry/d' include/linux/nmi.h
-          sed -i '/sl_softirq_exit/d' include/linux/nmi.h
+          sed -i '/sl_softirq_entry/d' include/linux/nmi.h; sed -i '/sl_hardirq_entry/d' include/linux/nmi.h; sed -i '/sl_softirq_exit/d' include/linux/nmi.h
           echo "static inline void sl_softirq_entry(const char *a, void *b) { }" >> include/linux/nmi.h
           echo "static inline void sl_hardirq_entry(const char *a, void *b) { }" >> include/linux/nmi.h
           echo "static inline void sl_softirq_exit(void) { }" >> include/linux/nmi.h
@@ -55,57 +54,18 @@ jobs:
           #define sched_cpu_rq_online(a) do{}while(0)
           #endif
           EOF
-          cat > include/linux/debug-snapshot.h << 'EOF'
-          #ifndef DEBUG_SNAPSHOT_H
-          #define DEBUG_SNAPSHOT_H
-          #define DSS_FLAG_IN 0
-          #define DSS_FLAG_OUT 1
-          #define DSS_FLAG_TEMP 0
-          #define DSS_FLAG_IRQ 0
-          #define DSS_FLAG_SOFTIRQ 0
-          #define DSS_FLAG_SOFTIRQ_TASKLET 0
-          #define DSS_FLAG_SOFTIRQ_HI_TASKLET 0
-          #define DSS_FLAG_SOFTIRQ_HI 0
-          #define DSS_FLAG_SOFTIRQ_TIMER 0
-          #define DSS_FLAG_SOFTIRQ_NET_TX 0
-          #define DSS_FLAG_SOFTIRQ_NET_RX 0
-          #define DSS_FLAG_SOFTIRQ_BLOCK 0
-          #define DSS_FLAG_SOFTIRQ_IRQ_POLL 0
-          #define DSS_FLAG_SOFTIRQ_SCHED 0
-          #define DSS_FLAG_SOFTIRQ_HRTIMER 0
-          #define DSS_FLAG_SOFTIRQ_RCU 0
-          #define DSS_FLAG_WORK 0
-          #define DSS_FLAG_TASK 0
-          #define DSS_FLAG_SUSPEND 0
-          #define DSS_FLAG_RESUME 0
-          #define DSS_FLAG_CLOCK 0
-          /* Brutal macro - accept any args */
-          #define dbg_snapshot_suspend(...) do{}while(0)
-          #define dbg_snapshot_resume(...) do{}while(0)
-          #define dbg_snapshot_task(...) do{}while(0)
-          #define dbg_snapshot_spinlock(...) do{}while(0)
-          #define dbg_snapshot_mutex(...) do{}while(0)
-          #define dbg_snapshot_sema(...) do{}while(0)
-          #define dbg_snapshot_irq(...) do{}while(0)
-          #define dbg_snapshot_irq_var(...) do{}while(0)
-          #define dbg_snapshot_work(...) do{}while(0)
-          #define dbg_snapshot_work_not_running(...) do{}while(0)
-          #define dbg_snapshot_clock_nanosleep(...) do{}while(0)
-          #define dbg_snapshot_hrtimer(...) do{}while(0)
-          #define dbg_snapshot_timer(...) do{}while(0)
-          #define dbg_snapshot_early_panic(...) do{}while(0)
-          #define dbg_snapshot_hook_hardlockup_exit(...) do{}while(0)
-          #define dbg_snapshot_prepare_panic(...) do{}while(0)
-          #define dbg_snapshot_dump_panic(...) do{}while(0)
-          #define dbg_snapshot_post_panic(...) do{}while(0)
-          #define dbg_snapshot_print_log(...) do{}while(0)
-          #define dbg_snapshot_print_log_task(...) do{}while(0)
-          #define dbg_snapshot_print_log_work(...) do{}while(0)
-          #define dbg_snapshot_hardirq_enable(...) do{}while(0)
-          #define dbg_snapshot_hardirq_disable(...) do{}while(0)
-          #define dbg_snapshot_add_bl_item_info(a,b,c) 0
-          #endif
-          EOF
+          # AUTO GENERATE debug-snapshot.h from all occurrences in source
+          echo "#ifndef DEBUG_SNAPSHOT_H" > include/linux/debug-snapshot.h
+          echo "#define DEBUG_SNAPSHOT_H" >> include/linux/debug-snapshot.h
+          echo "#define DSS_FLAG_IN 0" >> include/linux/debug-snapshot.h
+          echo "#define DSS_FLAG_OUT 1" >> include/linux/debug-snapshot.h
+          grep -rho "DSS_FLAG_[A-Z_]*" --include="*.c" --include="*.h" . | sort -u | sed 's/.*/#define & 0/' >> include/linux/debug-snapshot.h
+          echo "#define DSS_FLAG_TEMP 0" >> include/linux/debug-snapshot.h
+          echo "#define DSS_FLAG_IRQ 0" >> include/linux/debug-snapshot.h
+          grep -rho "dbg_snapshot_[a-z_]*" --include="*.c" --include="*.h" . | sort -u | sed 's/.*/#define &(...) do{}while(0)/' >> include/linux/debug-snapshot.h
+          echo "#define dbg_snapshot_add_bl_item_info(a,b,c) 0" >> include/linux/debug-snapshot.h
+          echo "#endif" >> include/linux/debug-snapshot.h
+          echo "=== Generated debug-snapshot.h ==="; cat include/linux/debug-snapshot.h
           sed -i '1i #include <linux/debug-snapshot.h>' include/linux/spinlock_api_smp.h
       - name: Build
         run: |
