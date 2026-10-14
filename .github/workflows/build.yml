@@ -7,13 +7,13 @@ jobs:
     container:
       image: ubuntu:20.04
     steps:
-      - name: Install git + deps early
+      - name: Install deps
         run: |
           apt update -y
           apt install -y git bc bison flex gcc-arm-linux-gnueabihf libssl-dev make
           git config --global --add safe.directory $GITHUB_WORKSPACE
       - uses: actions/checkout@v4
-      - name: Clone + dummy clang
+      - name: Clone
         run: |
           rm -rf kernel
           git clone https://github.com/Linux4/samsung_kernel.git --depth=1 kernel
@@ -28,12 +28,14 @@ jobs:
           export HOSTCC="gcc -fcommon"
           cd kernel
           DEF=$(ls arch/arm/configs/ | tail -n 1)
-          echo "Using $DEF"
           make $DEF
           echo "CONFIG_ANDROID_BINDERFS=y" >> .config
           echo "CONFIG_SECCOMP=y" >> .config
           make olddefconfig
-          make -j$(nproc) zImage
+          # Fix race - prepare single thread first
+          make -j1 scripts
+          make -j1 prepare
+          make -j$(nproc) zImage 2>&1 | tail -n 50
           ls -lh arch/arm/boot/
       - uses: actions/upload-artifact@v4
         with:
