@@ -58,7 +58,6 @@ jobs:
           cat > include/linux/debug-snapshot.h << 'EOF'
           #ifndef DEBUG_SNAPSHOT_H
           #define DEBUG_SNAPSHOT_H
-          #include <linux/types.h>
           #define DSS_FLAG_IN 0
           #define DSS_FLAG_OUT 1
           #define DSS_FLAG_TEMP 0
@@ -76,27 +75,34 @@ jobs:
           #define DSS_FLAG_SOFTIRQ_HRTIMER 0
           #define DSS_FLAG_SOFTIRQ_RCU 0
           #define DSS_FLAG_WORK 0
-          static inline void dbg_snapshot_suspend(const char *a, void *b, void *c, int d, int e) {}
-          static inline void dbg_snapshot_resume(void) {}
-          static inline void dbg_snapshot_task(int a, void *b) {}
-          static inline void dbg_snapshot_spinlock(void *a, int b) {}
-          static inline void dbg_snapshot_mutex(void *a, int b) {}
-          static inline void dbg_snapshot_sema(void *a, int b) {}
-          static inline void dbg_snapshot_irq(int a, void *b, void *c, int d, int e) {}
-          static inline void dbg_snapshot_irq_var(unsigned long long a) {}
-          static inline void dbg_snapshot_work(void *a, void *b, void *c, int d) {}
-          static inline void dbg_snapshot_work_not_running(void *a) {}
-          static inline void dbg_snapshot_clock_nanosleep(int a, int b, void *c, void *d) {}
-          static inline void dbg_snapshot_early_panic(void) {}
-          static inline void dbg_snapshot_hook_hardlockup_exit(void) {}
-          static inline void dbg_snapshot_prepare_panic(void) {}
-          static inline void dbg_snapshot_dump_panic(void *a, size_t b) {}
-          static inline void dbg_snapshot_post_panic(void) {}
-          static inline void dbg_snapshot_print_log(int a) {}
-          static inline void dbg_snapshot_print_log_task(void) {}
-          static inline void dbg_snapshot_print_log_work(void) {}
-          static inline void dbg_snapshot_hardirq_enable(void) {}
-          static inline void dbg_snapshot_hardirq_disable(void) {}
+          #define DSS_FLAG_TASK 0
+          #define DSS_FLAG_SUSPEND 0
+          #define DSS_FLAG_RESUME 0
+          #define DSS_FLAG_CLOCK 0
+          /* Brutal macro - accept any args */
+          #define dbg_snapshot_suspend(...) do{}while(0)
+          #define dbg_snapshot_resume(...) do{}while(0)
+          #define dbg_snapshot_task(...) do{}while(0)
+          #define dbg_snapshot_spinlock(...) do{}while(0)
+          #define dbg_snapshot_mutex(...) do{}while(0)
+          #define dbg_snapshot_sema(...) do{}while(0)
+          #define dbg_snapshot_irq(...) do{}while(0)
+          #define dbg_snapshot_irq_var(...) do{}while(0)
+          #define dbg_snapshot_work(...) do{}while(0)
+          #define dbg_snapshot_work_not_running(...) do{}while(0)
+          #define dbg_snapshot_clock_nanosleep(...) do{}while(0)
+          #define dbg_snapshot_hrtimer(...) do{}while(0)
+          #define dbg_snapshot_timer(...) do{}while(0)
+          #define dbg_snapshot_early_panic(...) do{}while(0)
+          #define dbg_snapshot_hook_hardlockup_exit(...) do{}while(0)
+          #define dbg_snapshot_prepare_panic(...) do{}while(0)
+          #define dbg_snapshot_dump_panic(...) do{}while(0)
+          #define dbg_snapshot_post_panic(...) do{}while(0)
+          #define dbg_snapshot_print_log(...) do{}while(0)
+          #define dbg_snapshot_print_log_task(...) do{}while(0)
+          #define dbg_snapshot_print_log_work(...) do{}while(0)
+          #define dbg_snapshot_hardirq_enable(...) do{}while(0)
+          #define dbg_snapshot_hardirq_disable(...) do{}while(0)
           #define dbg_snapshot_add_bl_item_info(a,b,c) 0
           #endif
           EOF
