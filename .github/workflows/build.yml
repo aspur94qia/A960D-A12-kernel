@@ -6,31 +6,40 @@ jobs:
     runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@v4
-      - name: Clone kernel
+      - name: Clone REAL SC7731 kernel
         run: |
           rm -rf kernel
-          git clone https://github.com/nasreirma/spreadtrum-sc7731-android-5.1-mocordroid-source.git --depth=1 kernel
-          ls kernel | head -n 20
-          find kernel -maxdepth 4 -type d -name configs | head -n 5
+          # Coba 3 source yang masih hidup, pakai yang berhasil
+          git clone https://github.com/SamarV-121/android_kernel_samsung_j1acelte.git --depth=1 kernel || \
+          git clone https://github.com/LineageOS/android_kernel_samsung_scx15.git --depth=1 kernel || \
+          git clone https://github.com/Exynos4/android_kernel_samsung_sc7731.git --depth=1 kernel
+          ls kernel/arch/arm/configs/ | head -n 30
+
       - name: Install
         run: sudo apt update -y && sudo apt install -y bc bison flex gcc-arm-linux-gnueabihf libssl-dev
-      - name: Build
+
+      - name: Build for A960D
         run: |
-          if [ -d "kernel/kernel/arch/arm/configs" ]; then CDIR="kernel/kernel"; else CDIR="kernel"; fi
-          echo "CDIR=$CDIR"
-          ls $CDIR/arch/arm/configs/ | grep 7731 || ls $CDIR/arch/arm/configs/ | head
           export ARCH=arm
           export CROSS_COMPILE=arm-linux-gnueabihf-
-          cd $CDIR
-          DEF=$(ls arch/arm/configs/ | grep 7731 | head -n 1)
-          if [ -z "$DEF" ]; then DEF=$(ls arch/arm/configs/ | head -n 1); fi
-          echo "Using $DEF"
+          cd kernel
+          DEF=$(ls arch/arm/configs/ | grep -E "j1|sc7731|scx15|7731" | head -n 1)
+          if [ -z "$DEF" ]; then DEF=$(ls arch/arm/configs/*defconfig | head -n 1 | xargs basename); fi
+          echo "=== BUILD $DEF untuk HXW-A960D ==="
           make $DEF
-          printf "\nCONFIG_ANDROID_BINDERFS=y\nCONFIG_SECCOMP=y\nCONFIG_SECCOMP_FILTER=y\n" >> .config
+          # Inject tweak Android 12 + S0LD1ERSP0CK
+          echo "" >>.config
+          echo "CONFIG_ANDROID_BINDERFS=y" >>.config
+          echo "CONFIG_SECCOMP=y" >>.config
+          echo "CONFIG_SECCOMP_FILTER=y" >>.config
+          echo "CONFIG_ANDROID_PARANOID_NETWORK=n" >>.config
+          echo "CONFIG_MODULES=y" >>.config
           make olddefconfig
-          make -j$(nproc) zImage
-      - name: Upload
+          make -j$(nproc) zImage dtbs 2>&1 | tail -n 100
+          ls -lh arch/arm/boot/
+
+      - name: Upload zImage
         uses: actions/upload-artifact@v4
         with:
-          name: zImage-A960D
-          path: "**/zImage"
+          name: zImage-A960D-A12
+          path: kernel/arch/arm/boot/zImage
