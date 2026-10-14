@@ -1,6 +1,5 @@
 name: Build A960D Fast
-on:
-  workflow_dispatch:
+on: workflow_dispatch:
 jobs:
   build:
     runs-on: ubuntu-22.04
@@ -8,18 +7,19 @@ jobs:
       - uses: actions/checkout@v4
       - name: Install
         run: sudo apt update -y && sudo apt install -y bc bison flex gcc-arm-linux-gnueabihf
-      - name: List configs
-        run: ls arch/arm/configs/ || ls arch/arm64/configs/ || find . -name "*defconfig" | head -n 20
       - name: Build
         run: |
           export ARCH=arm
           export CROSS_COMPILE=arm-linux-gnueabihf-
-          ls arch/arm/configs/
-          DEF=$(ls arch/arm/configs/ | head -n 1)
-          echo "Coba pakai $DEF"
+          DEF=$(ls arch/arm/configs/ | grep -i 7731 | head -n 1)
+          echo "DEFCONFIG=$DEF"
           make $DEF
-          make -j$(nproc) zImage || make -j$(nproc)
+          echo "CONFIG_ANDROID_BINDERFS=y" >> .config
+          echo "CONFIG_SECCOMP=y" >> .config
+          echo "CONFIG_SECCOMP_FILTER=y" >> .config
+          make olddefconfig
+          make -j$(nproc) zImage
       - uses: actions/upload-artifact@v4
         with:
-          name: A960D-build
-          path: arch/arm/boot/
+          name: zImage-A960D-A12
+          path: arch/arm/boot/zImage
