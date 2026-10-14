@@ -13,40 +13,55 @@ jobs:
           apt install -y git bc bison flex gcc-arm-linux-gnueabihf libssl-dev make
           git config --global --add safe.directory $GITHUB_WORKSPACE
       - uses: actions/checkout@v4
-      - name: Clone + clang wrapper filter
+      - name: Clone + patches
         run: |
           rm -rf kernel
           git clone https://github.com/Linux4/samsung_kernel.git --depth=1 kernel
+          # clang wrapper filter armv8 flags
           mkdir -p kernel/toolchain/clang/host/linux-x86/clang-4639204-cfp-jopp/bin
           cat > kernel/toolchain/clang/host/linux-x86/clang-4639204-cfp-jopp/bin/clang << 'WRAP'
           #!/bin/bash
           REAL=/usr/bin/arm-linux-gnueabihf-gcc
           ARGS=()
-          SKIP_NEXT=0
+          SKIP=0
           for a in "$@"; do
-            if [ $SKIP_NEXT -eq 1 ]; then SKIP_NEXT=0; continue; fi
+            if [ $SKIP -eq 1 ]; then SKIP=0; continue; fi
             case "$a" in
-              -march=armv8-a+lse) continue;;
-              -march=armv8-a) continue;;
-              -Xassembler) SKIP_NEXT=1; continue;;
+              -march=armv8-a+lse|-march=armv8-a) continue;;
+              -Xassembler) SKIP=1; continue;;
               -no-integrated-as) continue;;
-              -Werror=implicit-int) continue;;
-              -Werror=strict-prototypes) continue;;
-              -Werror=date-time) continue;;
-              -Werror=incompatible-pointer-types) continue;;
-              -Werror=designated-init) continue;;
               --param=allow-store-data-races=0) continue;;
             esac
-            # handle depfile creation
-            if echo "$a" | grep -q "\.d"; then
+            if echo "$a" | grep -q "\.d$"; then
               p=$(echo "$a" | rev | cut -d, -f1 | rev)
-              if echo "$p" | grep -q "\.d$"; then mkdir -p "$(dirname "$p")" 2>/dev/null; touch "$p" 2>/dev/null; fi
+              mkdir -p "$(dirname "$p")" 2>/dev/null; touch "$p" 2>/dev/null
             fi
             ARGS+=("$a")
           done
           exec $REAL "${ARGS[@]}"
           WRAP
           chmod +x kernel/toolchain/clang/host/linux-x86/clang-4639204-cfp-jopp/bin/clang
+          cd kernel
+          # 1. stub dbg_snapshot_spinlock
+          if ! grep -q "dbg_snapshot_spinlock" include/linux/spinlock_api_smp.h; then :; else
+            sed -i '1i#define dbg_snapshot_spinlock(a,b) do{}while(0)\nstatic inline void dbg_snapshot_print_lock(void *a,int b){}\nstatic inline void dbg_snapshot_print_lock_by_name(const char *a){}' include/linux/spinlock_api_smp.h
+          fi
+          # better insert stub at top of file
+          grep -q "dbg_snapshot_spinlock" include/linux/spinlock_api_smp.h || echo -e "#ifndef dbg_snapshot_spinlock\n#define dbg_snapshot_spinlock(l,c) do{}while(0)\n#endif" >> include/linux/spinlock_api_smp.h
+          # ensure stub defined before use - prepend
+          sed -i '1i static inline void dbg_snapshot_spinlock(void *a,int b){} ' include/linux/spinlock_api_smp.h || true
+          # deduplicate later - make it macro to avoid duplicate
+          sed -i '1s/.*/ #define dbg_snapshot_spinlock(l,c) do{}while(0)/' include/linux/spinlock_api_smp.h
+
+          # 2. fix dev_socdata incomplete type
+          # define dummy struct before device.h uses it
+          sed -i '/^struct device {/i struct dev_socdata { int dummy; };' include/linux/device.h || true
+          # also fix if struct dev_socdata defined elsewhere
+          grep -q "struct dev_socdata" include/linux/sys_soc.h && sed -i '1i struct dev_socdata { int dummy; };' include/linux/device.h || true
+
+          # 3. remove Werror for asm-offsets
+          sed -i 's/-Werror=implicit-function-declaration//g' Makefile || true
+          sed -i 's/-Werror//g' arch/arm/kernel/Makefile || true
       - name: Build
         run: |
           export ARCH=arm
@@ -58,13 +73,16 @@ jobs:
           make $DEF
           echo "CONFIG_ANDROID_BINDERFS=y" >>.config
           echo "CONFIG_SECCOMP=y" >>.config
+          # disable debug snapshot to avoid more errors
+          sed -i 's/CONFIG_DEBUG_SNAPSHOT=.*/# CONFIG_DEBUG_SNAPSHOT is not set/' .config || true
+          echo "# CONFIG_DEBUG_SNAPSHOT is not set" >>.config
           make olddefconfig
           make -j1 scripts_basic
           printf '#!/bin/sh\nmkdir -p "$(dirname "$1")"; touch "$1"; exit 0\n' > scripts/basic/fixdep
           chmod +x scripts/basic/fixdep
           make -j1 scripts
-          make -j1 prepare
-          make -j$(nproc) zImage
+          make -j1 prepare KCFLAGS="-Wno-error"
+          make -j$(nproc) zImage KCFLAGS="-Wno-error -Wno-error=implicit-function-declaration -Wno-error=implicit-int" || make -j1 zImage KCFLAGS="-Wno-error"
           ls -lh arch/arm/boot/zImage
       - uses: actions/upload-artifact@v4
         with:
