@@ -13,13 +13,26 @@ jobs:
           apt install -y git bc bison flex gcc-arm-linux-gnueabihf libssl-dev make
           git config --global --add safe.directory $GITHUB_WORKSPACE
       - uses: actions/checkout@v4
-      - name: Clone
+      - name: Clone + fix clang wrapper
         run: |
           rm -rf kernel
           git clone https://github.com/Linux4/samsung_kernel.git --depth=1 kernel
+          # bikin clang wrapper yang beneran manggil gcc + handle .d files
           mkdir -p kernel/toolchain/clang/host/linux-x86/clang-4639204-cfp-jopp/bin
-          printf '#!/bin/bash\nexit 0\n' > kernel/toolchain/clang/host/linux-x86/clang-4639204-cfp-jopp/bin/clang
+          REALGCC=$(which arm-linux-gnueabihf-gcc)
+          cat > kernel/toolchain/clang/host/linux-x86/clang-4639204-cfp-jopp/bin/clang << WRAP
+          #!/bin/bash
+          # wrapper clang -> arm gcc
+          for arg in "\$@"; do
+            case "\$arg" in
+              *","*.d) p=\$(echo "\$arg" | rev | cut -d, -f1 | rev); mkdir -p \$(dirname "\$p") 2>/dev/null; touch "\$p" 2>/dev/null;;
+              *.d) mkdir -p \$(dirname "\$arg") 2>/dev/null; touch "\$arg" 2>/dev/null;;
+            esac
+          done
+          exec $REALGCC "\$@"
+          WRAP
           chmod +x kernel/toolchain/clang/host/linux-x86/clang-4639204-cfp-jopp/bin/clang
+          cat kernel/toolchain/clang/host/linux-x86/clang-4639204-cfp-jopp/bin/clang
       - name: Build
         run: |
           export ARCH=arm
@@ -28,30 +41,15 @@ jobs:
           export HOSTCC="gcc -fcommon"
           cd kernel
           DEF=$(ls arch/arm/configs/ | tail -n 1)
+          echo "DEF=$DEF"
           make $DEF
           echo "CONFIG_ANDROID_BINDERFS=y" >>.config
           echo "CONFIG_SECCOMP=y" >>.config
           make olddefconfig
-          make -j1 V=1 scripts_basic
-          printf '#!/bin/sh\nDEP="$1"; mkdir -p "$(dirname "$DEP")"; touch "$DEP"; exit 0\n' > scripts/basic/fixdep
+          make -j1 scripts_basic
+          printf '#!/bin/sh\nmkdir -p "$(dirname "$1")"; touch "$1"; exit 0\n' > scripts/basic/fixdep
           chmod +x scripts/basic/fixdep
-          # pre-create empty.o
-          mkdir -p scripts/mod
-          arm-linux-gnueabihf-gcc -c scripts/mod/empty.c -o scripts/mod/empty.o || (echo "int x;" | arm-linux-gnueabihf-gcc -c -x c - -o scripts/mod/empty.o)
-          touch scripts/mod/.empty.o.d
-          # try build devicetable with verbose to see fail, but ignore
-          make -j1 V=1 scripts/mod/elfconfig.h || true
-          make -j1 V=1 scripts/mod/modpost.o || true
-          # manual bypass devicetable-offsets.h - create dummy if needed
-          mkdir -p scripts/mod
-          cat > scripts/mod/devicetable-offsets.h << 'H'
-          #define __MOD_DEVICETABLE__OFFSETS_CHECKED__
-          H
-          touch scripts/mod/devicetable-offsets.h
-          touch scripts/mod/.devicetable-offsets.s.d
-          touch scripts/mod/devicetable-offsets.s
-          # now try full scripts
-          make -j1 V=1 scripts || (echo "--- scripts fail log ---"; cat scripts/mod/devicetable-offsets.c | head -n 20; make -j1 V=1 scripts/mod/devicetable-offsets.s; ls -lh scripts/mod/)
+          make -j1 scripts
           make -j1 prepare
           make -j$(nproc) zImage
           ls -lh arch/arm/boot/zImage
