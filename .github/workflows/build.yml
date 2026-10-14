@@ -6,25 +6,21 @@ jobs:
     runs-on: ubuntu-22.04
     container:
       image: ubuntu:20.04
-      options: --privileged
     steps:
-      - name: Fix git safe dir
-        run: git config --global --add safe.directory $GITHUB_WORKSPACE
+      - name: Install git + deps early
+        run: |
+          apt update -y
+          apt install -y git bc bison flex gcc-arm-linux-gnueabihf libssl-dev make
+          git config --global --add safe.directory $GITHUB_WORKSPACE
       - uses: actions/checkout@v4
       - name: Clone + dummy clang
         run: |
           rm -rf kernel
           git clone https://github.com/Linux4/samsung_kernel.git --depth=1 kernel
           mkdir -p kernel/toolchain/clang/host/linux-x86/clang-4639204-cfp-jopp/bin
-          echo '#!/bin/bash
-          exit 0' > kernel/toolchain/clang/host/linux-x86/clang-4639204-cfp-jopp/bin/clang
+          printf '#!/bin/bash\nexit 0\n' > kernel/toolchain/clang/host/linux-x86/clang-4639204-cfp-jopp/bin/clang
           chmod +x kernel/toolchain/clang/host/linux-x86/clang-4639204-cfp-jopp/bin/clang
-      - name: Install deps in container
-        run: |
-          export DEBIAN_FRONTEND=noninteractive
-          apt update -y
-          apt install -y bc bison flex gcc-arm-linux-gnueabihf libssl-dev git make
-      - name: Build GCC9 inside container
+      - name: Build
         run: |
           export ARCH=arm
           export CROSS_COMPILE=arm-linux-gnueabihf-
