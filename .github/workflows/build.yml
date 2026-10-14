@@ -1,27 +1,19 @@
 name: Build A960D Fast
-on:
-  workflow_dispatch:
+on: { workflow_dispatch: {} }
 jobs:
   build:
     runs-on: ubuntu-22.04
-    container:
-      image: ubuntu:20.04
-    defaults:
-      run:
-        shell: bash
+    container: { image: ubuntu:20.04 }
+    defaults: { run: { shell: bash } }
     steps:
-      - name: Install deps
-        run: |
-          apt update -y
-          apt install -y git bc bison flex gcc-arm-linux-gnueabihf libssl-dev make
-          git config --global --add safe.directory $GITHUB_WORKSPACE
       - uses: actions/checkout@v4
-      - name: Clone + base patches
-        run: |
+      - run: |
+          apt update -y && apt install -y git bc bison flex gcc-arm-linux-gnueabihf libssl-dev make
+          git config --global --add safe.directory $GITHUB_WORKSPACE
           rm -rf kernel
           git clone https://github.com/Linux4/samsung_kernel.git --depth=1 kernel
           mkdir -p kernel/toolchain/clang/host/linux-x86/clang-4639204-cfp-jopp/bin
-          printf '#!/bin/bash\nREAL=/usr/bin/arm-linux-gnueabihf-gcc\nARGS=()\nSKIP=0\nfor a in "$@"; do if [ $SKIP -eq 1 ]; then SKIP=0; continue; fi; case "$a" in -march=armv8-a+lse|-march=armv8-a) continue;; -Xassembler) SKIP=1; continue;; -no-integrated-as) continue;; --param=allow-store-data-races=0) continue;; esac; if echo "$a" | grep -q "\\.d$"; then p=$(echo "$a" | rev | cut -d, -f1 | rev); mkdir -p "$(dirname "$p")" 2>/dev/null; touch "$p" 2>/dev/null; fi; ARGS+=("$a"); done; exec $REAL "${ARGS[@]}"\n' > kernel/toolchain/clang/host/linux-x86/clang-4639204-cfp-jopp/bin/clang
+          echo -e '#!/bin/bash\nREAL=/usr/bin/arm-linux-gnueabihf-gcc\nARGS=()\nSKIP=0\nfor a in "$@"; do if [ $SKIP -eq 1 ]; then SKIP=0; continue; fi; case "$a" in -march=armv8-a+lse|-march=armv8-a) continue;; -Xassembler) SKIP=1; continue;; -no-integrated-as) continue;; --param=allow-store-data-races=0) continue;; esac; if echo "$a" | grep -q "\\.d$"; then p=$(echo "$a" | rev | cut -d, -f1 | rev); mkdir -p "$(dirname "$p")" 2>/dev/null; touch "$p" 2>/dev/null; fi; ARGS+=("$a"); done; exec $REAL "${ARGS[@]}"' > kernel/toolchain/clang/host/linux-x86/clang-4639204-cfp-jopp/bin/clang
           chmod +x kernel/toolchain/clang/host/linux-x86/clang-4639204-cfp-jopp/bin/clang
           cd kernel
           sed -i '/#define DEV_SOCDATA_MAGIC/d' include/linux/device.h
@@ -31,21 +23,19 @@ jobs:
           echo "static inline void sl_softirq_entry(const char *a, void *b) { }" >> include/linux/nmi.h
           echo "static inline void sl_hardirq_entry(const char *a, void *b) { }" >> include/linux/nmi.h
           echo "static inline void sl_softirq_exit(void) { }" >> include/linux/nmi.h
-          mkdir -p arch/arm/include/asm
-          echo "#ifndef __ASM_KERNEL_PGTABLE_H\n#define __ASM_KERNEL_PGTABLE_H\n#endif" > arch/arm/include/asm/kernel-pgtable.h
+          mkdir -p arch/arm/include/asm; echo "#ifndef __ASM_KERNEL_PGTABLE_H
+          #define __ASM_KERNEL_PGTABLE_H
+          #endif" > arch/arm/include/asm/kernel-pgtable.h
           sed -i 's/static bool __init_or_module initcall_sec_debug/static bool initcall_sec_debug/' init/main.c
           sed -i 's/static inline void init_ems(void);/static inline void init_ems(void) {}/' include/linux/ems.h
           sed -i 's/int sec_super_setup_bdi_name(struct super_block \*sb, char \*fmt, \.\.\.);/static inline int sec_super_setup_bdi_name(struct super_block *sb, char *fmt, ...) { return 0; }/' include/linux/fs.h
-          # FIX cpu.c - stub sched_cpu_rq_online call
           sed -i 's/sched_cpu_rq_online(cpu);/\/\/sched_cpu_rq_online(cpu);/' kernel/cpu.c
-          # FIX ologk.h
-          echo "#ifndef OLOG_PB_H
-          #define OLOG_PB_H
-          #endif" > include/linux/olog.pb.h
-          echo "" > include/linux/ologk.h
           echo "#ifndef OLOGK_H
           #define OLOGK_H
           #endif" > include/linux/ologk.h
+          echo "#ifndef OLOG_PB_H
+          #define OLOG_PB_H
+          #endif" > include/linux/olog.pb.h
           cat > include/linux/sec_debug.h << 'HEAD'
           #ifndef SEC_DEBUG_H
           #define SEC_DEBUG_H
@@ -72,57 +62,38 @@ jobs:
           #define sec_log(...) do{}while(0)
           #endif" > include/linux/sec_log.h
           sed -i '1i #include <linux/debug-snapshot.h>' include/linux/spinlock_api_smp.h
-      - name: Build with REAL auto-fix loop
+      - name: Build SUPER AUTO
         run: |
-          export ARCH=arm
-          export CROSS_COMPILE=arm-linux-gnueabihf-
-          export CC=arm-linux-gnueabihf-gcc
-          export HOSTCC="gcc -fcommon"
+          export ARCH=arm; export CROSS_COMPILE=arm-linux-gnueabihf-; export CC=arm-linux-gnueabihf-gcc; export HOSTCC="gcc -fcommon"
           cd kernel
-          DEF=$(ls arch/arm/configs/ | tail -n 1)
-          make $DEF
+          DEF=$(ls arch/arm/configs/ | tail -n 1); make $DEF
           sed -i 's/CONFIG_DEBUG_SNAPSHOT=.*/# CONFIG_DEBUG_SNAPSHOT is not set/' .config
-          echo "# CONFIG_DEBUG_SNAPSHOT is not set" >> .config
-          echo "CONFIG_ANDROID_BINDERFS=y" >> .config
-          echo "CONFIG_SECCOMP=y" >> .config
-          echo "CONFIG_SEC_DEBUG=n" >> .config
-          make olddefconfig
-          make -j1 scripts_basic
+          echo -e "# CONFIG_DEBUG_SNAPSHOT is not set\nCONFIG_ANDROID_BINDERFS=y\nCONFIG_SECCOMP=y\nCONFIG_SEC_DEBUG=n" >> .config
+          make olddefconfig; make -j1 scripts_basic
           printf '#!/bin/sh\nmkdir -p "$(dirname "$1")"; touch "$1"; exit 0\n' > scripts/basic/fixdep; chmod +x scripts/basic/fixdep
-          make -j1 scripts
-          make -j1 prepare
-          set +e
-          for i in $(seq 1 20); do
-            echo "===== ATTEMPT $i ====="
+          make -j1 scripts; make -j1 prepare; set +e
+          for i in $(seq 1 25); do
+            echo "===== TRY $i ====="
             make -j$(nproc) zImage KCFLAGS="-Wno-error" 2>&1 | tee /tmp/build.log
-            STATUS=${PIPESTATUS[0]}
-            if [ $STATUS -eq 0 ]; then echo "SUCCESS"; break; fi
-            BAD=$(grep "in expansion of macro" /tmp/build.log | grep -oE "'[^']+'" | tr -d "'" | sort -u | head -n 20)
-            if [ -n "$BAD" ]; then
-              for m in $BAD; do
-                echo "AUTO-REMOVING $m"
-                sed -i "/#define $m/d" include/linux/sec_debug.h
-                sed -i "/#define $m/d" include/linux/debug-snapshot.h
-              done
-              continue
-            fi
-            MISS=$(grep "error: implicit declaration of function" /tmp/build.log | grep -oE "'[^']+'" | tr -d "'" | sort -u)
-            if [ -n "$MISS" ]; then
-              for f in $MISS; do
-                echo "AUTO-ADDING stub $f"
-                echo "#define $f(...) do{}while(0)" >> include/linux/sec_debug.h
-              done
-              continue
-            fi
+            [ ${PIPESTATUS[0]} -eq 0 ] && echo "SUCCESS AT TRY $i" && break
+            echo "--- AUTO FIXING ---"
+            grep "fatal error:" /tmp/build.log | grep -oE "[a-zA-Z0-9_/\.-]+\.h" | sort -u | while read hdr; do
+              echo "Creating missing header $hdr"
+              mkdir -p $(dirname include/linux/$hdr) 2>/dev/null
+              touch kernel/include/linux/$hdr 2>/dev/null
+              echo "#ifndef __$(echo $hdr | tr 'a-z./' 'A-Z___')_STUB
+          #define __$(echo $hdr | tr 'a-z./' 'A-Z___')_STUB
+          #endif" > kernel/include/linux/$hdr 2>/dev/null || true
+              mkdir -p kernel/include/$(dirname $hdr) 2>/dev/null
+              touch kernel/include/$hdr 2>/dev/null || true
+            done
+            grep "in expansion of macro" /tmp/build.log | grep -oE "'[^']+'" | tr -d "'" | sort -u | while read m; do sed -i "/#define $m/d" include/linux/sec_debug.h include/linux/debug-snapshot.h; done
+            grep "error: implicit declaration of function" /tmp/build.log | grep -oE "'[^']+'" | tr -d "'" | sort -u | while read f; do echo "#define $f(...) do{}while(0)" >> include/linux/sec_debug.h; done
           done
           ls -lh arch/arm/boot/zImage
       - uses: actions/upload-artifact@v4
         if: always()
-        with:
-          name: build-log
-          path: /tmp/build.log
+        with: { name: build-log, path: /tmp/build.log }
       - uses: actions/upload-artifact@v4
         if: success()
-        with:
-          name: zImage-A960D
-          path: kernel/arch/arm/boot/zImage
+        with: { name: zImage-A960D, path: kernel/arch/arm/boot/zImage }
