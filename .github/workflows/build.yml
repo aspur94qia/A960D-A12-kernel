@@ -75,6 +75,7 @@ jobs:
           #define DSS_FLAG_SOFTIRQ_SCHED 0
           #define DSS_FLAG_SOFTIRQ_HRTIMER 0
           #define DSS_FLAG_SOFTIRQ_RCU 0
+          #define DSS_FLAG_WORK 0
           static inline void dbg_snapshot_suspend(const char *a, void *b, void *c, int d, int e) {}
           static inline void dbg_snapshot_resume(void) {}
           static inline void dbg_snapshot_task(int a, void *b) {}
@@ -83,6 +84,9 @@ jobs:
           static inline void dbg_snapshot_sema(void *a, int b) {}
           static inline void dbg_snapshot_irq(int a, void *b, void *c, int d, int e) {}
           static inline void dbg_snapshot_irq_var(unsigned long long a) {}
+          static inline void dbg_snapshot_work(void *a, void *b, void *c, int d) {}
+          static inline void dbg_snapshot_work_not_running(void *a) {}
+          static inline void dbg_snapshot_clock_nanosleep(int a, int b, void *c, void *d) {}
           static inline void dbg_snapshot_early_panic(void) {}
           static inline void dbg_snapshot_hook_hardlockup_exit(void) {}
           static inline void dbg_snapshot_prepare_panic(void) {}
