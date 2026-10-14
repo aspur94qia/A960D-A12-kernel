@@ -72,7 +72,6 @@ jobs:
           #define DSS_FLAG_SOFTIRQ_NET_RX 0
           #define DSS_FLAG_SOFTIRQ_BLOCK 0
           #define DSS_FLAG_SOFTIRQ_IRQ_POLL 0
-          #define DSS_FLAG_SOFTIRQ_TASKLET 0
           #define DSS_FLAG_SOFTIRQ_SCHED 0
           #define DSS_FLAG_SOFTIRQ_HRTIMER 0
           #define DSS_FLAG_SOFTIRQ_RCU 0
@@ -83,6 +82,7 @@ jobs:
           static inline void dbg_snapshot_mutex(void *a, int b) {}
           static inline void dbg_snapshot_sema(void *a, int b) {}
           static inline void dbg_snapshot_irq(int a, void *b, void *c, int d, int e) {}
+          static inline void dbg_snapshot_irq_var(unsigned long long a) {}
           static inline void dbg_snapshot_early_panic(void) {}
           static inline void dbg_snapshot_hook_hardlockup_exit(void) {}
           static inline void dbg_snapshot_prepare_panic(void) {}
@@ -93,7 +93,6 @@ jobs:
           static inline void dbg_snapshot_print_log_work(void) {}
           static inline void dbg_snapshot_hardirq_enable(void) {}
           static inline void dbg_snapshot_hardirq_disable(void) {}
-static inline void dbg_snapshot_irq_var(unsigned long long a) {}
           #define dbg_snapshot_add_bl_item_info(a,b,c) 0
           #endif
           EOF
