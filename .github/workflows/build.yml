@@ -31,37 +31,32 @@ jobs:
           mkdir -p arch/arm/include/asm
           echo "#ifndef __ASM_KERNEL_PGTABLE_H\n#define __ASM_KERNEL_PGTABLE_H\n#endif" > arch/arm/include/asm/kernel-pgtable.h
           sed -i 's/static bool __init_or_module initcall_sec_debug/static bool initcall_sec_debug/' init/main.c
-          # Generate sec_debug.h with all DTYPE_ and DSS_FLAG
-          cat > include/linux/sec_debug.h << 'EOF'
+          cat > include/linux/sec_debug.h << 'HEAD'
           #ifndef SEC_DEBUG_H
           #define SEC_DEBUG_H
+          #include <linux/types.h>
           struct sec_debug_auto_comment { int dummy; };
           struct sec_debug_auto_comment_info { int dummy; };
-          static inline void sec_debug_wtsk_set_data(int a, void *b) {}
-          static inline void sec_debug_wtsk_clear_data(void) {}
-          static inline void sec_debug_task_set_cpu(int a, int b) {}
-          static inline void sec_debug_init(void) {}
-          static inline void sec_debug_auto_comment_init(void) {}
-          #define sec_debug_auto_comment(a,b) do{}while(0)
-          #define SEC_DEBUG_AUTO_COMMENT_MAGIC 0
-          #define sched_cpu_rq_online(a) do{}while(0)
-          EOF
+          HEAD
           grep -rho "DTYPE_[A-Z_]*" --include="*.c" --include="*.h" . | sort -u | sed 's/.*/#define & 0/' >> include/linux/sec_debug.h
           grep -rho "DSS_FLAG_[A-Z_]*" --include="*.c" --include="*.h" . | sort -u | sed 's/.*/#define & 0/' >> include/linux/sec_debug.h
+          # auto stub all sec_debug_* functions as macro
+          grep -rho "sec_debug_[a-z0-9_]*" --include="*.c" --include="*.h" . | sed 's/.*\(sec_debug_[a-z0-9_]*\).*/\1/' | sort -u | sed 's/.*/#define &(...) do{}while(0)/' >> include/linux/sec_debug.h
+          echo "#define sec_debug_auto_comment(a,b) do{}while(0)" >> include/linux/sec_debug.h
+          echo "#define SEC_DEBUG_AUTO_COMMENT_MAGIC 0" >> include/linux/sec_debug.h
+          echo "#define sched_cpu_rq_online(a) do{}while(0)" >> include/linux/sec_debug.h
           echo "#endif" >> include/linux/sec_debug.h
-          # Generate debug-snapshot.h
-          cat > include/linux/debug-snapshot.h << 'EOF'
+          cat > include/linux/debug-snapshot.h << 'HEAD2'
           #ifndef DEBUG_SNAPSHOT_H
           #define DEBUG_SNAPSHOT_H
-          EOF
+          HEAD2
           grep -rho "DSS_FLAG_[A-Z_]*" --include="*.c" --include="*.h" . | sort -u | sed 's/.*/#define & 0/' >> include/linux/debug-snapshot.h
           grep -rho "DTYPE_[A-Z_]*" --include="*.c" --include="*.h" . | sort -u | sed 's/.*/#define & 0/' >> include/linux/debug-snapshot.h
-          grep -rho "dbg_snapshot_[a-z_]*" --include="*.c" --include="*.h" . | sort -u | sed 's/.*/#define &(...) do{}while(0)/' >> include/linux/debug-snapshot.h
+          grep -rho "dbg_snapshot_[a-z_]*" --include="*.c" --include="*.h" . | sed 's/.*\(dbg_snapshot_[a-z_]*\).*/\1/' | sort -u | sed 's/.*/#define &(...) do{}while(0)/' >> include/linux/debug-snapshot.h
           echo "#define dbg_snapshot_add_bl_item_info(a,b,c) 0" >> include/linux/debug-snapshot.h
-          echo "#define dbg_snapshot_add_bl_item_info_recursive(a,b,c) 0" >> include/linux/debug-snapshot.h
           echo "#endif" >> include/linux/debug-snapshot.h
-          cat include/linux/debug-snapshot.h
           cat include/linux/sec_debug.h
+          cat include/linux/debug-snapshot.h
           sed -i '1i #include <linux/debug-snapshot.h>' include/linux/spinlock_api_smp.h
       - name: Build
         run: |
