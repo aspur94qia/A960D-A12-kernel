@@ -12,6 +12,10 @@ jobs:
           apt update -y
           apt install -y git bc bison flex gcc-arm-linux-gnueabihf libssl-dev make
           git config --global --add safe.directory $GITHUB_WORKSPACE
+          # WRAP gcc to auto-create depfile dirs
+          mv /usr/bin/arm-linux-gnueabihf-gcc /usr/bin/arm-linux-gnueabihf-gcc.real
+          printf '#!/bin/bash\nfor arg in "$@"; do case "$arg" in *-MD,*|*MD,* ) f=$(echo "$arg" | sed -e "s/.*-MD,//" -e "s/,.*//" -e "s/.*MD,//"); mkdir -p "$(dirname "$f")" 2>/dev/null; touch "$f" 2>/dev/null;; *.d) mkdir -p "$(dirname "$arg")"; touch "$arg";; esac; done\n# also handle -Wp,-MD,path form\nfor a in "$@"; do if echo "$a" | grep -q "MD,"; then p=$(echo "$a" | cut -d, -f2); mkdir -p "$(dirname "$p")"; fi; done\n/usr/bin/arm-linux-gnueabihf-gcc.real "$@"\n' > /usr/bin/arm-linux-gnueabihf-gcc
+          chmod +x /usr/bin/arm-linux-gnueabihf-gcc
       - uses: actions/checkout@v4
       - name: Clone
         run: |
@@ -33,14 +37,9 @@ jobs:
           echo "CONFIG_SECCOMP=y" >>.config
           make olddefconfig
           make -j1 scripts_basic
-          mv scripts/basic/fixdep scripts/basic/fixdep.real
-          printf '#!/bin/sh\nmkdir -p "$(dirname "$1")"\n"'"$(pwd)"'/scripts/basic/fixdep.real" "$@" || (mkdir -p "$(dirname "$1")"; touch "$1"; true)\n' > scripts/basic/fixdep
+          # Replace fixdep with true no-op
+          printf '#!/bin/sh\nDEP="$1"\nmkdir -p "$(dirname "$DEP")"\ntouch "$DEP"\nexit 0\n' > scripts/basic/fixdep
           chmod +x scripts/basic/fixdep
-          mkdir -p scripts/mod
-          echo "int main(){return 0;}" > scripts/mod/empty.c
-          $CC -c scripts/mod/empty.c -o scripts/mod/empty.o || gcc -c scripts/mod/empty.c -o scripts/mod/empty.o
-          ls -lh scripts/mod/empty.o
-          touch scripts/mod/.empty.o.d
           make -j1 scripts
           make -j1 prepare
           make -j$(nproc) zImage
