@@ -34,8 +34,10 @@ jobs:
           make olddefconfig
           make -j1 scripts_basic
           mv scripts/basic/fixdep scripts/basic/fixdep.real
-          printf '#!/bin/sh\nmkdir -p $(dirname "$1")\ntouch "$1"\n/scripts/basic/fixdep.real "$@" || true\n' > scripts/basic/fixdep
+          printf '#!/bin/sh\nDEP="$1"\nmkdir -p "$(dirname "$DEP")"\ntouch "$DEP"\n"'"$(pwd)"'/scripts/basic/fixdep.real" "$@" || true\n' > scripts/basic/fixdep
           chmod +x scripts/basic/fixdep
+          cat scripts/basic/fixdep
+          ls -l scripts/basic/fixdep*
           make -j1 scripts
           make -j1 prepare
           make -j$(nproc) zImage
