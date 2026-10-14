@@ -61,6 +61,7 @@ jobs:
           #define DSS_FLAG_IN 0
           #define DSS_FLAG_OUT 1
           #define DSS_FLAG_TEMP 0
+          #include <linux/types.h>
           static inline void dbg_snapshot_suspend(const char *a, void *b, void *c, int d, int e) {}
           static inline void dbg_snapshot_resume(void) {}
           static inline void dbg_snapshot_task(int a, void *b) {}
@@ -78,6 +79,8 @@ jobs:
           #define dbg_snapshot_add_bl_item_info(a,b,c) 0
           #endif
           EOF
+          # INI FIX UTAMA: pastikan spinlock_api_smp.h include debug-snapshot.h
+          sed -i '1i #include <linux/debug-snapshot.h>' include/linux/spinlock_api_smp.h
       - name: Build
         run: |
           export ARCH=arm
