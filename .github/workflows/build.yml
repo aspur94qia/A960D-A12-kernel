@@ -25,16 +25,16 @@ jobs:
           awk 'BEGIN{p=1} /struct dev_socdata \{/{p=0} p; /\};/ && p==0 {p=1; next}' include/linux/device.h > /tmp/fixed.h && mv /tmp/fixed.h include/linux/device.h
           sed -i '1i #ifndef DEV_SOCDATA_MAGIC\n#define DEV_SOCDATA_MAGIC 0xCAFEDEAD\nstruct dev_socdata { int magic; const char *soc; const char *ip; };\n#endif' include/linux/device.h
           sed -i '1i static inline void dbg_snapshot_spinlock(void *l, int c) {}\n#define DBG_SNAPSHOT_SPINLOCK_FIXED' include/linux/spinlock_api_smp.h
-          # FIX nmi.h - hapus semua baris yang mengandung sl_ entry lalu inject yang benar
           sed -i '/sl_softirq_entry/d' include/linux/nmi.h
           sed -i '/sl_hardirq_entry/d' include/linux/nmi.h
           sed -i '/sl_softirq_exit/d' include/linux/nmi.h
-          # inject di akhir file sebelum #endif kalau ada, kalau tidak di baris 125
           echo "static inline void sl_softirq_entry(const char *a, void *b) { }" >> include/linux/nmi.h
           echo "static inline void sl_hardirq_entry(const char *a, void *b) { }" >> include/linux/nmi.h
           echo "static inline void sl_softirq_exit(void) { }" >> include/linux/nmi.h
           mkdir -p arch/arm/include/asm
           echo "#ifndef __ASM_KERNEL_PGTABLE_H\n#define __ASM_KERNEL_PGTABLE_H\n#endif" > arch/arm/include/asm/kernel-pgtable.h
+          # FIX section conflict
+          sed -i 's/static bool __init_or_module initcall_sec_debug/static bool initcall_sec_debug/' init/main.c
       - name: Build
         run: |
           export ARCH=arm
