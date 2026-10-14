@@ -10,21 +10,30 @@ jobs:
         run: |
           rm -rf kernel
           git clone https://github.com/Linux4/samsung_kernel.git --depth=1 kernel
-          ls kernel/arch/arm/configs/ | head -n 30
+          ls kernel/arch/arm/configs/ | head -n 5
       - name: Install
-        run: sudo apt update -y && sudo apt install -y bc bison flex gcc-arm-linux-gnueabihf libssl-dev
+        run: |
+          sudo apt update -y
+          sudo apt install -y bc bison flex gcc-arm-linux-gnueabihf libssl-dev clang lld
+          mkdir -p kernel/toolchain/clang/host/linux-x86/clang-4639204-cfp-jopp/bin/
+          ln -sf /usr/bin/clang kernel/toolchain/clang/host/linux-x86/clang-4639204-cfp-jopp/bin/clang
+          ln -sf /usr/bin/clang++ kernel/toolchain/clang/host/linux-x86/clang-4639204-cfp-jopp/bin/clang++
+          ln -sf /usr/bin/ld.lld kernel/toolchain/clang/host/linux-x86/clang-4639204-cfp-jopp/bin/ld.lld
       - name: Build
         run: |
           export ARCH=arm
           export CROSS_COMPILE=arm-linux-gnueabihf-
+          export CC=clang
+          export CLANG_TRIPLE=arm-linux-gnueabihf-
           cd kernel
-          DEF=$(ls arch/arm/configs/ | head -n 1)
+          DEF=$(ls arch/arm/configs/ | grep -E "a12|j1|gta|universal" | head -n 1)
+          if [ -z "$DEF" ]; then DEF=$(ls arch/arm/configs/ | tail -n 1); fi
           echo "Using $DEF"
           make $DEF
-          echo "CONFIG_ANDROID_BINDERFS=y" >> .config
-          echo "CONFIG_SECCOMP=y" >> .config
+          echo "CONFIG_ANDROID_BINDERFS=y" >>.config
+          echo "CONFIG_SECCOMP=y" >>.config
           make olddefconfig
-          make -j$(nproc) zImage
+          make -j$(nproc) zImage 2>&1 | tail -n 100
           ls -lh arch/arm/boot/
       - uses: actions/upload-artifact@v4
         with:
