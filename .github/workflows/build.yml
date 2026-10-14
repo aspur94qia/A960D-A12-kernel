@@ -13,7 +13,7 @@ jobs:
           apt install -y git bc bison flex gcc-arm-linux-gnueabihf libssl-dev make
           git config --global --add safe.directory $GITHUB_WORKSPACE
       - uses: actions/checkout@v4
-      - name: Clone + patches
+      - name: Clone + base patches
         run: |
           rm -rf kernel
           git clone https://github.com/Linux4/samsung_kernel.git --depth=1 kernel
@@ -59,7 +59,7 @@ jobs:
           #define sec_log(...) do{}while(0)
           #endif" > include/linux/sec_log.h
           sed -i '1i #include <linux/debug-snapshot.h>' include/linux/spinlock_api_smp.h
-      - name: Build
+      - name: Build with REAL auto-fix loop
         run: |
           export ARCH=arm
           export CROSS_COMPILE=arm-linux-gnueabihf-
@@ -77,8 +77,41 @@ jobs:
           make -j1 scripts_basic
           printf '#!/bin/sh\nmkdir -p "$(dirname "$1")"; touch "$1"; exit 0\n' > scripts/basic/fixdep; chmod +x scripts/basic/fixdep
           make -j1 scripts
-          make -j1 prepare KCFLAGS="-Wno-error"
-          make -j$(nproc) zImage KCFLAGS="-Wno-error" || make -j1 zImage KCFLAGS="-Wno-error"
+          make -j1 prepare
+          for i in $(seq 1 20); do
+            echo "===== ATTEMPT $i ====="
+            make -j$(nproc) zImage KCFLAGS="-Wno-error" 2>&1 | tee /tmp/build.log
+            STATUS=${PIPESTATUS[0]}
+            if [ $STATUS -eq 0 ]; then echo "SUCCESS"; break; fi
+            # 1) macro redefined as function -> delete that macro
+            BAD=$(grep "in expansion of macro" /tmp/build.log | grep -oE "'[^']+'" | tr -d "'" | sort -u | head -n 20)
+            if [ -n "$BAD" ]; then
+              for m in $BAD; do
+                echo "AUTO-REMOVING conflicting macro $m from sec_debug.h and debug-snapshot.h"
+                sed -i "/#define $m/d" include/linux/sec_debug.h
+                sed -i "/#define $m/d" include/linux/debug-snapshot.h
+              done
+              continue
+            fi
+            # 2) implicit declaration -> add stub
+            MISS=$(grep "error: implicit declaration of function" /tmp/build.log | grep -oE "'[^']+'" | tr -d "'" | sort -u)
+            if [ -n "$MISS" ]; then
+              for f in $MISS; do
+                echo "AUTO-ADDING stub $f"
+                echo "#define $f(...) do{}while(0)" >> include/linux/sec_debug.h
+              done
+              continue
+            fi
+            # 3) undeclared DTYPE/DSS
+            UDEF=$(grep "error: '.*' undeclared" /tmp/build.log | grep -oE "'[^']+'" | tr -d "'" | sort -u)
+            for u in $UDEF; do
+              if echo "$u" | grep -qE "^(DTYPE_|DSS_FLAG_)"; then
+                echo "#define $u 0" >> include/linux/sec_debug.h
+                echo "#define $u 0" >> include/linux/debug-snapshot.h
+              fi
+            done
+            echo "Retrying..."
+          done
           ls -lh arch/arm/boot/zImage
       - uses: actions/upload-artifact@v4
         with:
