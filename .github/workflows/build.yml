@@ -4,36 +4,40 @@ on:
 jobs:
   build:
     runs-on: ubuntu-22.04
+    container:
+      image: ubuntu:20.04
+      options: --privileged
     steps:
+      - name: Fix git safe dir
+        run: git config --global --add safe.directory $GITHUB_WORKSPACE
       - uses: actions/checkout@v4
-      - name: Clone kernel
+      - name: Clone + dummy clang
         run: |
           rm -rf kernel
           git clone https://github.com/Linux4/samsung_kernel.git --depth=1 kernel
-          ls kernel/arch/arm/configs/ | head -n 5
-      - name: Install
+          mkdir -p kernel/toolchain/clang/host/linux-x86/clang-4639204-cfp-jopp/bin
+          echo '#!/bin/bash
+          exit 0' > kernel/toolchain/clang/host/linux-x86/clang-4639204-cfp-jopp/bin/clang
+          chmod +x kernel/toolchain/clang/host/linux-x86/clang-4639204-cfp-jopp/bin/clang
+      - name: Install deps in container
         run: |
-          sudo apt update -y
-          sudo apt install -y bc bison flex gcc-arm-linux-gnueabihf libssl-dev clang lld
-          mkdir -p kernel/toolchain/clang/host/linux-x86/clang-4639204-cfp-jopp/bin/
-          ln -sf /usr/bin/clang kernel/toolchain/clang/host/linux-x86/clang-4639204-cfp-jopp/bin/clang
-          ln -sf /usr/bin/clang++ kernel/toolchain/clang/host/linux-x86/clang-4639204-cfp-jopp/bin/clang++
-          ln -sf /usr/bin/ld.lld kernel/toolchain/clang/host/linux-x86/clang-4639204-cfp-jopp/bin/ld.lld
-      - name: Build
+          export DEBIAN_FRONTEND=noninteractive
+          apt update -y
+          apt install -y bc bison flex gcc-arm-linux-gnueabihf libssl-dev git make
+      - name: Build GCC9 inside container
         run: |
           export ARCH=arm
           export CROSS_COMPILE=arm-linux-gnueabihf-
-          export CC=clang
-          export CLANG_TRIPLE=arm-linux-gnueabihf-
+          export CC=arm-linux-gnueabihf-gcc
+          export HOSTCC="gcc -fcommon"
           cd kernel
-          DEF=$(ls arch/arm/configs/ | grep -E "a12|j1|gta|universal" | head -n 1)
-          if [ -z "$DEF" ]; then DEF=$(ls arch/arm/configs/ | tail -n 1); fi
+          DEF=$(ls arch/arm/configs/ | tail -n 1)
           echo "Using $DEF"
           make $DEF
-          echo "CONFIG_ANDROID_BINDERFS=y" >>.config
-          echo "CONFIG_SECCOMP=y" >>.config
+          echo "CONFIG_ANDROID_BINDERFS=y" >> .config
+          echo "CONFIG_SECCOMP=y" >> .config
           make olddefconfig
-          make -j$(nproc) zImage 2>&1 | tail -n 100
+          make -j$(nproc) zImage
           ls -lh arch/arm/boot/
       - uses: actions/upload-artifact@v4
         with:
