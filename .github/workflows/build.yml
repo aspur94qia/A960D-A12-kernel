@@ -1,0 +1,38 @@
+name: Build A960D Kernel 3.10 A12
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-20.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install deps
+        run: |
+          sudo apt update
+          sudo apt install -y bc bison flex libssl-dev gcc-arm-linux-gnueabi
+          git clone https://android.googlesource.com/platform/prebuilts/gcc/linux-x86/arm/arm-eabi-4.8 --depth=1 toolchain
+      - name: Patch for Android 12
+        run: |
+          echo "CONFIG_ANDROID_BINDERFS=y" >> arch/arm/configs/sp7731e_1h10_defconfig
+          echo "CONFIG_SECCOMP=y" >> arch/arm/configs/sp7731e_1h10_defconfig
+          echo "CONFIG_SECCOMP_FILTER=y" >> arch/arm/configs/sp7731e_1h10_defconfig
+          echo "CONFIG_CGROUP_BPF=y" >> arch/arm/configs/sp7731e_1h10_defconfig
+      - name: Build zImage
+        run: |
+          export ARCH=arm
+          export SUBARCH=arm
+          export CROSS_COMPILE=$PWD/toolchain/bin/arm-eabi-
+          make sp7731e_1h10_defconfig
+          make -j$(nproc) zImage dtbs
+      - name: Pack boot
+        run: |
+          mkdir out
+          cp arch/arm/boot/zImage out/
+          cp arch/arm/boot/dts/*.dtb out/ 2>/dev/null || true
+      - name: Upload
+        uses: actions/upload-artifact@v4
+        with:
+          name: A960D-zImage-A12
+          path: out/
