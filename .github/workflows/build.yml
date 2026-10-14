@@ -17,7 +17,6 @@ jobs:
         run: |
           rm -rf kernel
           git clone https://github.com/Linux4/samsung_kernel.git --depth=1 kernel
-          # clang wrapper filter armv8 flags
           mkdir -p kernel/toolchain/clang/host/linux-x86/clang-4639204-cfp-jopp/bin
           cat > kernel/toolchain/clang/host/linux-x86/clang-4639204-cfp-jopp/bin/clang << 'WRAP'
           #!/bin/bash
@@ -42,26 +41,21 @@ jobs:
           WRAP
           chmod +x kernel/toolchain/clang/host/linux-x86/clang-4639204-cfp-jopp/bin/clang
           cd kernel
-          # 1. stub dbg_snapshot_spinlock
-          if ! grep -q "dbg_snapshot_spinlock" include/linux/spinlock_api_smp.h; then :; else
-            sed -i '1i#define dbg_snapshot_spinlock(a,b) do{}while(0)\nstatic inline void dbg_snapshot_print_lock(void *a,int b){}\nstatic inline void dbg_snapshot_print_lock_by_name(const char *a){}' include/linux/spinlock_api_smp.h
-          fi
-          # better insert stub at top of file
-          grep -q "dbg_snapshot_spinlock" include/linux/spinlock_api_smp.h || echo -e "#ifndef dbg_snapshot_spinlock\n#define dbg_snapshot_spinlock(l,c) do{}while(0)\n#endif" >> include/linux/spinlock_api_smp.h
-          # ensure stub defined before use - prepend
-          sed -i '1i static inline void dbg_snapshot_spinlock(void *a,int b){} ' include/linux/spinlock_api_smp.h || true
-          # deduplicate later - make it macro to avoid duplicate
-          sed -i '1s/.*/ #define dbg_snapshot_spinlock(l,c) do{}while(0)/' include/linux/spinlock_api_smp.h
-
-          # 2. fix dev_socdata incomplete type
-          # define dummy struct before device.h uses it
-          sed -i '/^struct device {/i struct dev_socdata { int dummy; };' include/linux/device.h || true
-          # also fix if struct dev_socdata defined elsewhere
-          grep -q "struct dev_socdata" include/linux/sys_soc.h && sed -i '1i struct dev_socdata { int dummy; };' include/linux/device.h || true
-
-          # 3. remove Werror for asm-offsets
-          sed -i 's/-Werror=implicit-function-declaration//g' Makefile || true
-          sed -i 's/-Werror//g' arch/arm/kernel/Makefile || true
+          # patch spinlock
+          sed -i '1i #define dbg_snapshot_spinlock(l,c) do{}while(0)' include/linux/spinlock_api_smp.h
+          # patch dev_socdata - stub create_fake_device completely
+          # replace the whole function to avoid incomplete type
+          awk '
+          BEGIN{skip=0}
+          /static inline.*create_fake_device/ {print "static inline struct device *create_fake_device(const char *soc, const char *ip){return NULL;}"; skip=1; next}
+          skip==1 && /^\}/ {skip=0; next}
+          skip==0 {print}
+          ' include/linux/device.h > /tmp/fixed.h && mv /tmp/fixed.h include/linux/device.h
+          # also ensure struct dev_socdata defined minimally to avoid other refs
+          grep -q "struct dev_socdata" include/linux/device.h || sed -i '/^struct device {/i struct dev_socdata { int dummy; int magic; const char *soc; const char *ip; };' include/linux/device.h
+          sed -i 's/^struct dev_socdata {.*/struct dev_socdata { int dummy; int magic; const char *soc; const char *ip; };/' include/linux/device.h || true
+          # ensure magic defined
+          grep -q "DEV_SOCDATA_MAGIC" include/linux/device.h || sed -i '1i #define DEV_SOCDATA_MAGIC 0x12345678' include/linux/device.h
       - name: Build
         run: |
           export ARCH=arm
@@ -73,8 +67,7 @@ jobs:
           make $DEF
           echo "CONFIG_ANDROID_BINDERFS=y" >>.config
           echo "CONFIG_SECCOMP=y" >>.config
-          # disable debug snapshot to avoid more errors
-          sed -i 's/CONFIG_DEBUG_SNAPSHOT=.*/# CONFIG_DEBUG_SNAPSHOT is not set/' .config || true
+          sed -i 's/CONFIG_DEBUG_SNAPSHOT=.*/# CONFIG_DEBUG_SNAPSHOT is not set/' .config
           echo "# CONFIG_DEBUG_SNAPSHOT is not set" >>.config
           make olddefconfig
           make -j1 scripts_basic
@@ -82,7 +75,7 @@ jobs:
           chmod +x scripts/basic/fixdep
           make -j1 scripts
           make -j1 prepare KCFLAGS="-Wno-error"
-          make -j$(nproc) zImage KCFLAGS="-Wno-error -Wno-error=implicit-function-declaration -Wno-error=implicit-int" || make -j1 zImage KCFLAGS="-Wno-error"
+          make -j$(nproc) zImage KCFLAGS="-Wno-error -Wno-implicit-function-declaration" || make -j1 zImage KCFLAGS="-Wno-error"
           ls -lh arch/arm/boot/zImage
       - uses: actions/upload-artifact@v4
         with:
