@@ -1,5 +1,6 @@
 name: Build A960D Fast
-on: workflow_dispatch:
+on:
+  workflow_dispatch:
 jobs:
   build:
     runs-on: ubuntu-22.04
@@ -7,12 +8,15 @@ jobs:
       - uses: actions/checkout@v4
       - name: Install
         run: sudo apt update -y && sudo apt install -y bc bison flex gcc-arm-linux-gnueabihf
+      - name: List
+        run: ls arch/arm/configs/
       - name: Build
         run: |
           export ARCH=arm
           export CROSS_COMPILE=arm-linux-gnueabihf-
-          DEF=$(ls arch/arm/configs/ | grep -i 7731 | head -n 1)
-          echo "DEFCONFIG=$DEF"
+          # defconfig di repo ini namanya sp7731e_1h10 atau mocor
+          DEF=$(ls arch/arm/configs/ | grep -E "sp7731|tshark" | head -n 1)
+          echo "Build $DEF"
           make $DEF
           echo "CONFIG_ANDROID_BINDERFS=y" >> .config
           echo "CONFIG_SECCOMP=y" >> .config
