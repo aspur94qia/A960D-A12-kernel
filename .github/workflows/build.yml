@@ -29,13 +29,20 @@ jobs:
           cd kernel
           DEF=$(ls arch/arm/configs/ | tail -n 1)
           make $DEF
-          echo "CONFIG_ANDROID_BINDERFS=y" >> .config
-          echo "CONFIG_SECCOMP=y" >> .config
+          echo "CONFIG_ANDROID_BINDERFS=y" >>.config
+          echo "CONFIG_SECCOMP=y" >>.config
           make olddefconfig
-          # Fix race - prepare single thread first
+          # === HACK FIXDEP ===
+          make -j1 scripts_basic
+          echo '#!/bin/sh
+          exit 0' > scripts/basic/fixdep
+          chmod +x scripts/basic/fixdep
+          mkdir -p scripts/mod
+          touch scripts/mod/.empty.o.d kernel/.bounds.s.d
+          # now build
           make -j1 scripts
           make -j1 prepare
-          make -j$(nproc) zImage 2>&1 | tail -n 50
+          make -j$(nproc) zImage
           ls -lh arch/arm/boot/
       - uses: actions/upload-artifact@v4
         with:
