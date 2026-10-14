@@ -12,10 +12,27 @@ jobs:
           apt update -y
           apt install -y git bc bison flex gcc-arm-linux-gnueabihf libssl-dev make
           git config --global --add safe.directory $GITHUB_WORKSPACE
-          # WRAP gcc to auto-create depfile dirs
-          mv /usr/bin/arm-linux-gnueabihf-gcc /usr/bin/arm-linux-gnueabihf-gcc.real
-          printf '#!/bin/bash\nfor arg in "$@"; do case "$arg" in *-MD,*|*MD,* ) f=$(echo "$arg" | sed -e "s/.*-MD,//" -e "s/,.*//" -e "s/.*MD,//"); mkdir -p "$(dirname "$f")" 2>/dev/null; touch "$f" 2>/dev/null;; *.d) mkdir -p "$(dirname "$arg")"; touch "$arg";; esac; done\n# also handle -Wp,-MD,path form\nfor a in "$@"; do if echo "$a" | grep -q "MD,"; then p=$(echo "$a" | cut -d, -f2); mkdir -p "$(dirname "$p")"; fi; done\n/usr/bin/arm-linux-gnueabihf-gcc.real "$@"\n' > /usr/bin/arm-linux-gnueabihf-gcc
-          chmod +x /usr/bin/arm-linux-gnueabihf-gcc
+          REAL=$(which arm-linux-gnueabihf-gcc)
+          echo $REAL
+          mv $REAL ${REAL}.real
+          cat > $REAL << 'WRAP'
+          #!/bin/bash
+          REAL_BIN="${0}.real"
+          for arg in "$@"; do
+            if echo "$arg" | grep -q "\.d"; then
+              # try extract path after last comma
+              p=$(echo "$arg" | rev | cut -d, -f1 | rev)
+              if echo "$p" | grep -q "\.d$"; then
+                mkdir -p "$(dirname "$p")" 2>/dev/null || true
+                touch "$p" 2>/dev/null || true
+              fi
+            fi
+          done
+          exec "$REAL_BIN" "$@"
+          WRAP
+          chmod +x $REAL
+          cat $REAL
+          ls -l $REAL*
       - uses: actions/checkout@v4
       - name: Clone
         run: |
@@ -37,9 +54,12 @@ jobs:
           echo "CONFIG_SECCOMP=y" >>.config
           make olddefconfig
           make -j1 scripts_basic
-          # Replace fixdep with true no-op
-          printf '#!/bin/sh\nDEP="$1"\nmkdir -p "$(dirname "$DEP")"\ntouch "$DEP"\nexit 0\n' > scripts/basic/fixdep
+          printf '#!/bin/sh\nmkdir -p "$(dirname "$1")"\ntouch "$1"\nexit 0\n' > scripts/basic/fixdep
           chmod +x scripts/basic/fixdep
+          mkdir -p scripts/mod
+          arm-linux-gnueabihf-gcc -c scripts/mod/empty.c -o scripts/mod/empty.o || echo "manual empty.c fail, creating dummy"
+          ls -lh scripts/mod/empty.o || (echo "int x;" | arm-linux-gnueabihf-gcc -c -x c - -o scripts/mod/empty.o; ls -lh scripts/mod/empty.o)
+          touch scripts/mod/.empty.o.d
           make -j1 scripts
           make -j1 prepare
           make -j$(nproc) zImage
