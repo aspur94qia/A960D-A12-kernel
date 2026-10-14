@@ -5,28 +5,23 @@ on:
 
 jobs:
   build:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@v4
-      - name: Fast deps
+      - name: Install
         run: |
           sudo apt update -y
-          sudo apt install -y bc bison flex --no-install-recommends
-          # toolchain 4.9 kecil, download cepet
-          wget -q https://github.com/LineageOS/android_prebuilts_gcc_linux-x86_arm_arm-eabi-4.9/releases/download/4.9.0/arm-eabi-4.9.tar.gz
-          tar xzf arm-eabi-4.9.tar.gz
-          mv arm-eabi-4.9 toolchain
+          sudo apt install -y bc bison flex gcc-arm-linux-gnueabihf libssl-dev
       - name: Build
         run: |
           export ARCH=arm
-          export CROSS_COMPILE=$PWD/toolchain/bin/arm-eabi-
-          make sp7731e_1h10_defconfig
-          echo "CONFIG_ANDROID_BINDERFS=y" >> .config
-          echo "CONFIG_SECCOMP=y" >> .config
-          echo "CONFIG_SECCOMP_FILTER=y" >> .config
-          make -j16 zImage
+          export CROSS_COMPILE=arm-linux-gnueabihf-
+          make sp7731e_1h10_defconfig || make sprd_defconfig || make sp7731e_defconfig
+          printf "\nCONFIG_ANDROID_BINDERFS=y\nCONFIG_SECCOMP=y\nCONFIG_SECCOMP_FILTER=y\n" >> .config
+          make olddefconfig
+          make -j$(nproc) zImage
       - name: Upload
         uses: actions/upload-artifact@v4
         with:
-          name: zImage-A960D-A12-fast
+          name: zImage-A960D-A12
           path: arch/arm/boot/zImage
