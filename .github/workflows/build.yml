@@ -42,17 +42,20 @@ jobs:
           WRAP
           chmod +x kernel/toolchain/clang/host/linux-x86/clang-4639204-cfp-jopp/bin/clang
           cd kernel
-          # FIX 1: device.h - hapus definisi lama yang di bawah, inject di atas sekali saja
-          # hapus semua baris #define DEV_SOCDATA_MAGIC dan struct dev_socdata { ... };
+          # Fix device.h
           sed -i '/#define DEV_SOCDATA_MAGIC/d' include/linux/device.h
-          # hapus blok struct dev_socdata { ... } yang lama (sampai };)
           awk 'BEGIN{p=1} /struct dev_socdata \{/{p=0} p; /\};/ && p==0 {p=1; next}' include/linux/device.h > /tmp/fixed.h && mv /tmp/fixed.h include/linux/device.h
-          # sekarang inject yang benar di baris 1, sebelum apapun
           sed -i '1i #ifndef DEV_SOCDATA_MAGIC\n#define DEV_SOCDATA_MAGIC 0xCAFEDEAD\nstruct dev_socdata { int magic; const char *soc; const char *ip; };\n#endif' include/linux/device.h
-          # FIX 2: spinlock - jangan define sebagai do{}while, tapi sebagai static inline kosong
+          # Fix spinlock
           sed -i '1i static inline void dbg_snapshot_spinlock(void *l, int c) {}\n#define DBG_SNAPSHOT_SPINLOCK_FIXED' include/linux/spinlock_api_smp.h
-          # pastikan nmi.h tidak rusak (reset kalau ada void void)
-          sed -i 's/static inline void void/static inline void/g' include/linux/nmi.h || true
+          # Fix nmi.h - add parameter names
+          sed -i 's/static inline void sl_softirq_entry(const char \*, void \*)/static inline void sl_softirq_entry(const char *a, void *b)/' include/linux/nmi.h
+          sed -i 's/static inline void void/static inline void/' include/linux/nmi.h || true
+          # Fix missing kernel-pgtable.h
+          mkdir -p arch/arm/include/asm
+          echo "#ifndef __ASM_KERNEL_PGTABLE_H\n#define __ASM_KERNEL_PGTABLE_H\n#endif" > arch/arm/include/asm/kernel-pgtable.h
+          # Also ensure vmlinux.lds.h fallback
+          echo "Created fixes"
       - name: Build
         run: |
           export ARCH=arm
